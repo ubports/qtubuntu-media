@@ -78,7 +78,7 @@ public:
     QAudio::Role audioRole() const;
     void setAudioRole(QAudio::Role audioRole);
 
-    void setMedia(const QUrl &url);
+    void setMedia(const QUrl &url, const core::ubuntu::media::Player::HeadersType& headers);
     void setMediaPlaylist(const QMediaPlaylist& playlist);
     void play();
     void pause();

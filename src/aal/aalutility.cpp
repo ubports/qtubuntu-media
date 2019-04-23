@@ -44,3 +44,15 @@ std::string AalUtility::unescape_str(const QMediaContent &media)
 {
     return unescape(media).toString().toStdString();
 }
+
+std::map<std::string, std::string> AalUtility::extractHeaders(const QNetworkRequest& request)
+{
+    std::map<std::string, std::string> extractedHeaders;
+    for (const QByteArray& headerKey : request.rawHeaderList()) {
+        const QByteArray headerVal = request.rawHeader(headerKey);
+        const std::string pairKey = headerKey.toStdString();
+        const std::string pairVal = headerVal.toStdString();
+        extractedHeaders.insert(std::make_pair(pairKey, pairVal));
+    }
+    return extractedHeaders;
+}

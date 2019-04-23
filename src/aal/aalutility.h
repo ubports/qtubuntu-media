@@ -26,6 +26,7 @@ struct AalUtility
 {
     static QUrl unescape(const QMediaContent &media);
     static std::string unescape_str(const QMediaContent &media);
+    static std::map<std::string, std::string> extractHeaders(const QNetworkRequest& request);
 
     AalUtility() = delete;
     AalUtility(const AalUtility&) = delete;

@@ -371,7 +371,8 @@ void AalMediaPlayerService::setMediaPlaylist(const QMediaPlaylist &playlist)
     m_mediaPlaylist = &playlist;
 }
 
-void AalMediaPlayerService::setMedia(const QUrl &url)
+void AalMediaPlayerService::setMedia(const QUrl &url,
+                                     const core::ubuntu::media::Player::HeadersType& headers)
 {
     if (m_hubPlayerSession == nullptr)
     {
@@ -395,7 +396,11 @@ void AalMediaPlayerService::setMedia(const QUrl &url)
     if (m_mediaPlaylistProvider == nullptr || m_mediaPlaylistProvider->mediaCount() == 0)
     {
         try {
-            m_hubPlayerSession->open_uri(url.toString().toStdString());
+            if (headers.empty()) {
+                m_hubPlayerSession->open_uri(url.toString().toStdString());
+            } else {
+                m_hubPlayerSession->open_uri(url.toString().toStdString(), headers);
+            }
         }
         catch (const media::Player::Errors::InsufficientAppArmorPermissions &e) {
             qWarning() << e.what();
