@@ -44,3 +44,13 @@ std::string AalUtility::unescape_str(const QMediaContent &media)
 {
     return unescape(media).toString().toStdString();
 }
+
+lomiri::MediaHub::Player::Headers AalUtility::extractHeaders(const QNetworkRequest& request)
+{
+    lomiri::MediaHub::Player::Headers extractedHeaders;
+    for (const QByteArray& headerKey : request.rawHeaderList()) {
+        const QByteArray headerVal = request.rawHeader(headerKey);
+        extractedHeaders.insert(QString::fromUtf8(headerKey), QString::fromUtf8(headerVal));
+    }
+    return extractedHeaders;
+}

@@ -22,10 +22,13 @@
 
 #include <string>
 
+#include <MediaHub/Player>
+
 struct AalUtility
 {
     static QUrl unescape(const QMediaContent &media);
     static std::string unescape_str(const QMediaContent &media);
+    static lomiri::MediaHub::Player::Headers extractHeaders(const QNetworkRequest& request);
 
     AalUtility() = delete;
     AalUtility(const AalUtility&) = delete;
