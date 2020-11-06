@@ -20,6 +20,7 @@
 #include "aalutility.h"
 
 #include <media/media_compatibility_layer.h>
+#include <core/media/player.h>
 
 #include <QMediaPlaylist>
 #include <QDebug>
@@ -196,7 +197,13 @@ void AalMediaPlayerControl::setMedia(const QMediaContent& media, QIODevice* stre
     Q_UNUSED(stream);
     qDebug() << __PRETTY_FUNCTION__ << endl;
 
-    qDebug() << "setMedia() media: " << AalUtility::unescape(media);
+    const QUrl mediaUrl =
+            AalUtility::unescape(media);
+    const core::ubuntu::media::Player::HeadersType headers =
+            AalUtility::extractHeaders(media.canonicalRequest());
+
+    qDebug() << "setMedia() media: " << mediaUrl;
+    qDebug() << "setMedia() headers empty: " << headers.empty();
 
     if (m_mediaContent == media) {
         qDebug() << "Same media as current";
@@ -211,7 +218,7 @@ void AalMediaPlayerControl::setMedia(const QMediaContent& media, QIODevice* stre
         setMediaStatus(QMediaPlayer::LoadingMedia);
 
     // If there is no media this cleans up the play list
-    m_service->setMedia(AalUtility::unescape(media));
+    m_service->setMedia(mediaUrl, headers);
 
     // This is important to do for QMediaPlaylist instances that
     // are set to loop. Without this, such a playlist will only
