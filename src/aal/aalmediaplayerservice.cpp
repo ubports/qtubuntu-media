@@ -23,8 +23,8 @@
 
 #include <qmediaplaylistcontrol_p.h>
 
-#include <core/media/service.h>
-#include <core/media/track_list.h>
+#include <MediaHub/Error>
+#include <MediaHub/TrackList>
 
 #include <errno.h>
 
@@ -48,9 +48,7 @@
 
 #include <QDebug>
 
-namespace media = core::ubuntu::media;
-
-using namespace std::placeholders;
+namespace media = lomiri::MediaHub;
 
 namespace
 {
@@ -59,47 +57,12 @@ enum {
     NO_ERROR    = 0,
     BAD_VALUE   = -EINVAL,
 };
-
-core::Signal<void> the_void;
 }
-
-class EmptySink : public core::ubuntu::media::video::Sink
-{
-public:
-    EmptySink(std::uint32_t gl_texture)
-    {
-        Q_UNUSED(gl_texture);
-    }
-
-    const core::Signal<void>& frame_available() const override
-    {
-        static const core::Signal<void> frame_available;
-        return frame_available;
-    }
-
-    bool transformation_matrix(float* matrix) const override
-    {
-        Q_UNUSED(matrix);
-        return false;
-    }
-
-    bool swap_buffers() const override
-    {
-        return false;
-    }
-};
-
 
 AalMediaPlayerService::AalMediaPlayerService(QObject *parent)
     :
      QMediaService(parent),
      m_hubPlayerSession(nullptr),
-     m_playbackStatusChangedConnection(the_void.connect([](){})),
-     m_errorConnection(the_void.connect([](){})),
-     m_endOfStreamConnection(the_void.connect([](){})),
-     m_serviceDisconnectedConnection(the_void.connect([](){})),
-     m_serviceReconnectedConnection(the_void.connect([](){})),
-     m_bufferingStatusChangedConnection(the_void.connect([](){})),
      m_mediaPlayerControl(nullptr),
      m_videoOutput(nullptr),
      m_mediaPlaylistControl(nullptr),
@@ -124,49 +87,8 @@ AalMediaPlayerService::AalMediaPlayerService(QObject *parent)
     connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, &AalMediaPlayerService::onApplicationStateChanged);
 }
 
-AalMediaPlayerService::AalMediaPlayerService
-    (const std::shared_ptr<core::ubuntu::media::Service> &service, QObject *parent)
-    :
-      QMediaService(parent),
-      m_hubService(service),
-      m_hubPlayerSession(nullptr),
-      m_playbackStatusChangedConnection(the_void.connect([](){})),
-      m_errorConnection(the_void.connect([](){})),
-      m_endOfStreamConnection(the_void.connect([](){})),
-      m_serviceDisconnectedConnection(the_void.connect([](){})),
-      m_serviceReconnectedConnection(the_void.connect([](){})),
-      m_bufferingStatusChangedConnection(the_void.connect([](){})),
-      m_mediaPlayerControl(nullptr),
-      m_videoOutput(nullptr),
-      m_mediaPlaylistControl(nullptr),
-      m_mediaPlaylistProvider(nullptr),
-      m_audioRoleControl(nullptr),
-      m_videoOutputReady(false),
-      m_firstPlayback(true),
-      m_cachedDuration(0),
-      m_mediaPlaylist(nullptr),
-      m_bufferPercent(0),
-      m_doReattachSession(false)
-  #ifdef MEASURE_PERFORMANCE
-       , m_lastFrameDecodeStart(0)
-       , m_currentFrameDecodeStart(0)
-       , m_avgCount(0)
-       , m_frameDecodeAvg(0)
-  #endif
-{
-    constructNewPlayerService();
-    // Note: this must be in the constructor and not part of constructNewPlayerService()
-    // or it won't successfully connect to the signal
-    connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, &AalMediaPlayerService::onApplicationStateChanged);
-}
-
 AalMediaPlayerService::~AalMediaPlayerService()
 {
-    m_errorConnection.disconnect();
-    m_playbackStatusChangedConnection.disconnect();
-    m_serviceDisconnectedConnection.disconnect();
-    m_serviceReconnectedConnection.disconnect();
-
     if (m_audioRoleControl)
         deleteAudioRoleControl();
 
@@ -185,17 +107,6 @@ AalMediaPlayerService::~AalMediaPlayerService()
 
 void AalMediaPlayerService::constructNewPlayerService()
 {
-    if (not m_hubService.get())
-        m_hubService = media::Service::Client::instance();
-
-    // As core::Connection doesn't allow us to start with a disconnected connection
-    // instance we have to connect it first with a dummy signal and then disconnect
-    // it again. If we don't do this connectSignals() will never be able to attach
-    // to the relevant signals.
-    m_endOfStreamConnection.disconnect();
-    m_serviceDisconnectedConnection.disconnect();
-    m_serviceReconnectedConnection.disconnect();
-
     if (!newMediaPlayer())
         qWarning() << "Failed to create a new media player backend. Video playback will not function." << endl;
 
@@ -209,20 +120,17 @@ void AalMediaPlayerService::constructNewPlayerService()
     createVideoRendererControl();
     createAudioRoleControl();
 
-    m_playbackStatusChangedConnection = m_hubPlayerSession->playback_status_changed().connect(
-        [this](const media::Player::PlaybackStatus &status) {
-            m_newStatus = status;
-            QMetaObject::invokeMethod(this, "onPlaybackStatusChanged", Qt::QueuedConnection);
-        });
+    QObject::connect(m_hubPlayerSession.get(), &media::Player::playbackStatusChanged,
+                     this, &AalMediaPlayerService::onPlaybackStatusChanged);
 
-    m_bufferingStatusChangedConnection = m_hubPlayerSession->buffering_changed().connect(
+    QObject::connect(m_hubPlayerSession.get(), &media::Player::bufferingChanged, this,
                 [this](int bufferingPercent) {
                     m_bufferPercent = bufferingPercent;
-                    QMetaObject::invokeMethod(this, "onBufferingChanged", Qt::DirectConnection);
+                    onBufferingChanged();
                 });
 
-    m_errorConnection = m_hubPlayerSession->error().connect(
-            std::bind(&AalMediaPlayerService::onError, this, _1));
+    QObject::connect(m_hubPlayerSession.get(), &media::Player::errorOccurred,
+                     this, &AalMediaPlayerService::onError);
 }
 
 QMediaControl *AalMediaPlayerService::requestControl(const char *name)
@@ -278,50 +186,18 @@ bool AalMediaPlayerService::newMediaPlayer()
     if (m_hubPlayerSession != nullptr)
         return true;
 
-    if (m_hubService == nullptr)
-    {
-        qWarning() << "Cannot create new media player instance without a valid media-hub service instance";
-        return false;
-    }
+    m_hubPlayerSession.reset(new media::Player());
 
-    try {
-        m_hubPlayerSession = m_hubService->create_session(media::Player::Client::default_configuration());
-    }
-    catch (const std::runtime_error &e) {
-        qWarning() << "Failed to start a new media-hub player session: " << e.what();
-        return false;
-    }
-
-    try {
-        // Get the player session UUID so we can suspend/restore our session when the ApplicationState
-        // changes
-        m_sessionUuid = m_hubPlayerSession->uuid();
-    } catch (const std::runtime_error &e) {
-        qWarning() << "Failed to retrieve the current player's uuid: " << e.what();
-        return false;
-    }
-
+    // Get the player session UUID so we can suspend/restore our session when the ApplicationState
+    // changes
+    m_sessionUuid = m_hubPlayerSession->uuid();
     return true;
 }
 
-std::shared_ptr<core::ubuntu::media::video::Sink> AalMediaPlayerService::createVideoSink(uint32_t texture_id)
+lomiri::MediaHub::VideoSink &AalMediaPlayerService::createVideoSink(uint32_t texture_id)
 {
-    if (m_hubPlayerSession == nullptr)
-        throw std::runtime_error
-        {
-            "Cannot create a video sink without a valid media-hub player session"
-        };
-
-    std::shared_ptr<core::ubuntu::media::video::Sink> sink;
-    try {
-        sink = m_hubPlayerSession->create_gl_texture_video_sink(texture_id);
-    } catch (const std::runtime_error &e) {
-        qWarning() << "Failed to create a new video sink:" << e.what();
-        return core::ubuntu::media::video::Sink::Ptr{new EmptySink(0)};
-    }
     m_videoOutputReady = true;
-
-    return sink;
+    return m_hubPlayerSession->createGLTextureVideoSink(texture_id);
 }
 
 void AalMediaPlayerService::resetVideoSink()
@@ -394,23 +270,8 @@ void AalMediaPlayerService::setMedia(const QUrl &url)
 
     if (m_mediaPlaylistProvider == nullptr || m_mediaPlaylistProvider->mediaCount() == 0)
     {
-        try {
-            m_hubPlayerSession->open_uri(url.toString().toStdString());
-        }
-        catch (const media::Player::Errors::InsufficientAppArmorPermissions &e) {
-            qWarning() << e.what();
-            signalQMediaPlayerError(media::Player::Error::resource_error);
-            return;
-        }
-        catch (const media::Player::Errors::UriNotFound &e) {
-            qWarning() << e.what();
-            signalQMediaPlayerError(media::Player::Error::resource_error);
-            return;
-        }
-        catch (const std::runtime_error &e) {
-            qWarning() << "Failed to set media " << url << ": " << e.what();
-            return;
-        }
+        // errors are delivered via Player::errorOccurred()
+        m_hubPlayerSession->openUri(url);
     }
 
     m_videoOutput->setupSurface();
@@ -442,18 +303,12 @@ void AalMediaPlayerService::play()
 
     if (m_videoOutputReady || isAudioSource())
     {
-        try {
-            m_mediaPlayerControl->setMediaStatus(QMediaPlayer::LoadedMedia);
+        m_mediaPlayerControl->setMediaStatus(QMediaPlayer::LoadedMedia);
 
-            qDebug() << "Actually calling m_hubPlayerSession->play()";
-            m_hubPlayerSession->play();
+        qDebug() << "Actually calling m_hubPlayerSession->play()";
+        m_hubPlayerSession->play();
 
-            m_mediaPlayerControl->mediaPrepared();
-        }
-        catch (const std::runtime_error &e) {
-            qWarning() << "Failed to start playback: " << e.what();
-            return;
-        }
+        m_mediaPlayerControl->mediaPrepared();
     }
     else
         Q_EMIT serviceReady();
@@ -467,13 +322,7 @@ void AalMediaPlayerService::pause()
         return;
     }
 
-    try {
-        m_hubPlayerSession->pause();
-    }
-    catch (const std::runtime_error &e) {
-        qWarning() << "Failed to pause playback: " << e.what();
-        return;
-    }
+    m_hubPlayerSession->pause();
 }
 
 void AalMediaPlayerService::stop()
@@ -484,14 +333,8 @@ void AalMediaPlayerService::stop()
         return;
     }
 
-    try {
-        m_hubPlayerSession->stop();
-        m_videoOutputReady = false;
-    }
-    catch (const std::runtime_error &e) {
-        qWarning() << "Failed to stop playback: " << e.what();
-        return;
-    }
+    m_hubPlayerSession->stop();
+    m_videoOutputReady = false;
 }
 
 int64_t AalMediaPlayerService::position() const
@@ -502,13 +345,7 @@ int64_t AalMediaPlayerService::position() const
         return 0;
     }
 
-    try {
-        return m_hubPlayerSession->position() / 1e6;
-    }
-    catch (const std::runtime_error &e) {
-        qWarning() << "Failed to get current playback position: " << e.what();
-        return 0;
-    }
+    return m_hubPlayerSession->position() / 1e6;
 }
 
 void AalMediaPlayerService::setPosition(int64_t msec)
@@ -518,12 +355,7 @@ void AalMediaPlayerService::setPosition(int64_t msec)
         qWarning() << "Cannot set current playback position without a valid media-hub player session";
         return;
     }
-    try {
-        m_hubPlayerSession->seek_to(std::chrono::microseconds{msec * 1000});
-    }
-    catch (const std::runtime_error &e) {
-        qWarning() << "Failed to set position to " << msec << ": " << e.what();
-    }
+    m_hubPlayerSession->seekTo(msec * 1000);
 }
 
 int64_t AalMediaPlayerService::duration()
@@ -534,20 +366,14 @@ int64_t AalMediaPlayerService::duration()
         return 0;
     }
 
-    try {
-        const int64_t d = m_hubPlayerSession->duration();
-        // Make sure that apps get updated if the duration does in fact change
-        if (d != m_cachedDuration)
-        {
-            m_cachedDuration = d;
-            m_mediaPlayerControl->emitDurationChanged(d / 1e6);
-        }
-        return d / 1e6;
+    const uint64_t d = m_hubPlayerSession->duration();
+    // Make sure that apps get updated if the duration does in fact change
+    if (d != m_cachedDuration)
+    {
+        m_cachedDuration = d;
+        m_mediaPlayerControl->emitDurationChanged(d / 1e6);
     }
-    catch (const std::runtime_error &e) {
-        qWarning() << "Failed to get current playback duration: " << e.what();
-        return 0;
-    }
+    return d / 1e6;
 }
 
 bool AalMediaPlayerService::isVideoSource() const
@@ -558,13 +384,7 @@ bool AalMediaPlayerService::isVideoSource() const
         return false;
     }
 
-    try {
-        return m_hubPlayerSession->is_video_source();
-    }
-    catch (const std::runtime_error &e) {
-        qWarning() << "Failed to check if source is video: " << e.what();
-        return false;
-    }
+    return m_hubPlayerSession->isVideoSource();
 }
 
 bool AalMediaPlayerService::isAudioSource() const
@@ -575,13 +395,7 @@ bool AalMediaPlayerService::isAudioSource() const
         return false;
     }
 
-    try {
-        return m_hubPlayerSession->is_audio_source();
-    }
-    catch (const std::runtime_error &e) {
-        qWarning() << "Failed to check if source is video: " << e.what();
-        return false;
-    }
+    return m_hubPlayerSession->isAudioSource();
 }
 
 int AalMediaPlayerService::getVolume() const
@@ -592,13 +406,7 @@ int AalMediaPlayerService::getVolume() const
         return 0;
     }
 
-    try {
-        return m_hubPlayerSession->volume();
-    }
-    catch (const std::runtime_error &e) {
-        qWarning() << "Failed to get current volume level: " << e.what();
-        return 0;
-    }
+    return m_hubPlayerSession->volume();
 }
 
 void AalMediaPlayerService::setVolume(int volume)
@@ -661,18 +469,12 @@ void AalMediaPlayerService::destroyPlayerSession()
     if (not m_hubPlayerSession)
         return;
 
-    try {
-        // Invalidates the media-hub player session
-        m_hubService->destroy_session(m_sessionUuid, media::Player::Client::default_configuration());
-        m_sessionUuid.clear();
+    // Invalidates the media-hub player session
+    m_sessionUuid.clear();
 
-        // When we arrived here the session is already invalid and we
-        // can safely drop the reference.
-        m_hubPlayerSession = nullptr;
-    }
-    catch (const std::runtime_error &e) {
-        qWarning() << "Failed to destroy existing media-hub player session: " << e.what();
-    }
+    // When we arrived here the session is already invalid and we
+    // can safely drop the reference.
+    m_hubPlayerSession = nullptr;
 }
 
 void AalMediaPlayerService::deleteVideoRendererControl()
@@ -707,41 +509,35 @@ void AalMediaPlayerService::deleteAudioRoleControl()
     }
 }
 
-void AalMediaPlayerService::signalQMediaPlayerError(const media::Player::Error &error)
+void AalMediaPlayerService::signalQMediaPlayerError(const media::Error &error)
 {
     QMediaPlayer::Error outError = QMediaPlayer::NoError;
-    QString outErrorStr;
-    switch (error)
+    switch (error.code())
     {
-        case media::Player::Error::resource_error:
+        case media::Error::ResourceError:
             outError = QMediaPlayer::ResourceError;
-            outErrorStr = "A media resource couldn't be resolved.";
             m_mediaPlayerControl->setMediaStatus(QMediaPlayer::InvalidMedia);
             break;
-        case media::Player::Error::format_error:
+        case media::Error::FormatError:
             outError = QMediaPlayer::FormatError;
-            outErrorStr = "The media format type is not playable due to a missing codec.";
             m_mediaPlayerControl->setMediaStatus(QMediaPlayer::InvalidMedia);
             break;
-        case media::Player::Error::network_error:
+        case media::Error::NetworkError:
             outError = QMediaPlayer::NetworkError;
-            outErrorStr = "A network error occurred.";
             break;
-        case media::Player::Error::access_denied_error:
+        case media::Error::AccessDeniedError:
             outError = QMediaPlayer::AccessDeniedError;
-            outErrorStr = "Insufficient privileges to play that media.";
             m_mediaPlayerControl->setMediaStatus(QMediaPlayer::InvalidMedia);
             break;
-        case media::Player::Error::service_missing_error:
+        case media::Error::ServiceMissingError:
             outError = QMediaPlayer::ServiceMissingError;
-            outErrorStr = "A valid playback service was not found, playback cannot proceed.";
             break;
         default:
             break;
     }
 
     if (outError != QMediaPlayer::NoError)
-        m_mediaPlayerControl->error(outError, outErrorStr);
+        m_mediaPlayerControl->error(outError, error.message());
 }
 
 void AalMediaPlayerService::onPlaybackStatusChanged()
@@ -751,18 +547,19 @@ void AalMediaPlayerService::onPlaybackStatusChanged()
     if (m_mediaPlayerControl == nullptr)
         return;
 
+    m_newStatus = m_hubPlayerSession->playbackStatus();
     // If the playback status changes from underneath (e.g. GStreamer or media-hub), make sure
     // the app is notified about this so it can change it's status
     switch (m_newStatus)
     {
-        case media::Player::PlaybackStatus::ready:
-        case media::Player::PlaybackStatus::stopped:
+        case media::Player::PlaybackStatus::Ready:
+        case media::Player::PlaybackStatus::Stopped:
             m_mediaPlayerControl->setState(QMediaPlayer::StoppedState);
             break;
-        case media::Player::PlaybackStatus::paused:
+        case media::Player::PlaybackStatus::Paused:
             m_mediaPlayerControl->setState(QMediaPlayer::PausedState);
             break;
-        case media::Player::PlaybackStatus::playing:
+        case media::Player::PlaybackStatus::Playing:
             // This is necessary in case duration == 0 right after calling play(). At this point,
             // the pipeline should be 100% prepared and playing.
             Q_EMIT m_mediaPlayerControl->durationChanged(duration());
@@ -849,14 +646,14 @@ void AalMediaPlayerService::updateClientSignals()
     Q_EMIT m_mediaPlayerControl->positionChanged(position());
     switch (m_newStatus)
     {
-        case media::Player::PlaybackStatus::ready:
-        case media::Player::PlaybackStatus::stopped:
+        case media::Player::PlaybackStatus::Ready:
+        case media::Player::PlaybackStatus::Stopped:
             m_mediaPlayerControl->setState(QMediaPlayer::StoppedState);
             break;
-        case media::Player::PlaybackStatus::paused:
+        case media::Player::PlaybackStatus::Paused:
             m_mediaPlayerControl->setState(QMediaPlayer::PausedState);
             break;
-        case media::Player::PlaybackStatus::playing:
+        case media::Player::PlaybackStatus::Playing:
             m_mediaPlayerControl->setState(QMediaPlayer::PlayingState);
             break;
         default:
@@ -866,41 +663,27 @@ void AalMediaPlayerService::updateClientSignals()
 
 void AalMediaPlayerService::connectSignals()
 {
-    if (!m_endOfStreamConnection.is_connected())
-    {
-        m_endOfStreamConnection = m_hubPlayerSession->end_of_stream().connect([this]()
+    QObject::connect(m_hubPlayerSession.get(), &media::Player::endOfStream,
+                     this, [this]()
         {
             m_firstPlayback = false;
             Q_EMIT playbackComplete();
         });
-    }
 
-    if (!m_serviceDisconnectedConnection.is_connected())
-    {
-        m_serviceDisconnectedConnection = m_hubService->service_disconnected().connect([this]()
-        {
-            QMetaObject::invokeMethod(this, "onServiceDisconnected", Qt::QueuedConnection);
-        });
-    }
-
-    if (!m_serviceReconnectedConnection.is_connected())
-    {
-        m_serviceReconnectedConnection = m_hubService->service_reconnected().connect([this]()
-        {
-            QMetaObject::invokeMethod(this, "onServiceReconnected", Qt::QueuedConnection);
-        });
-    }
+    QObject::connect(m_hubPlayerSession.get(), &media::Player::serviceDisconnected,
+                     this, &AalMediaPlayerService::onServiceReconnected);
+    QObject::connect(m_hubPlayerSession.get(), &media::Player::serviceReconnected,
+                     this, &AalMediaPlayerService::onServiceReconnected);
 }
 
 void AalMediaPlayerService::disconnectSignals()
 {
-    if (m_endOfStreamConnection.is_connected())
-        m_endOfStreamConnection.disconnect();
+    QObject::disconnect(m_hubPlayerSession.get(), nullptr, this, nullptr);
 }
 
-void AalMediaPlayerService::onError(const media::Player::Error &error)
+void AalMediaPlayerService::onError(const media::Error &error)
 {
-    qWarning() << "** Media playback error: " << error;
+    qWarning() << "** Media playback error: " << error.message();
     signalQMediaPlayerError(error);
 }
 
@@ -908,13 +691,13 @@ QString AalMediaPlayerService::playbackStatusStr(const media::Player::PlaybackSt
 {
     switch (status)
     {
-        case media::Player::PlaybackStatus::ready:
+        case media::Player::PlaybackStatus::Ready:
             return "ready";
-        case media::Player::PlaybackStatus::stopped:
+        case media::Player::PlaybackStatus::Stopped:
             return "stopped";
-        case media::Player::PlaybackStatus::paused:
+        case media::Player::PlaybackStatus::Paused:
             return "paused";
-        case media::Player::PlaybackStatus::playing:
+        case media::Player::PlaybackStatus::Playing:
             return "playing";
         default:
             qWarning() << "Unknown PlaybackStatus: " << status;
@@ -929,19 +712,8 @@ void AalMediaPlayerService::setPlayer(const std::shared_ptr<media::Player> &play
     createMediaPlayerControl();
     createVideoRendererControl();
 
-    if (!m_playbackStatusChangedConnection.is_connected())
-    {
-        m_playbackStatusChangedConnection = m_hubPlayerSession->playback_status_changed().connect(
-            [this](const media::Player::PlaybackStatus &status) {
-                m_newStatus = status;
-                QMetaObject::invokeMethod(this, "onPlaybackStatusChanged", Qt::QueuedConnection);
-            });
-    }
-}
-
-void AalMediaPlayerService::setService(const std::shared_ptr<media::Service> &service)
-{
-    m_hubService = service;
+    QObject::connect(m_hubPlayerSession.get(), &media::Player::playbackStatusChanged,
+                     this, &AalMediaPlayerService::onPlaybackStatusChanged);
 }
 
 #ifdef MEASURE_PERFORMANCE

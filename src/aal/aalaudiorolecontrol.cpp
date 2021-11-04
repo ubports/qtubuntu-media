@@ -18,10 +18,10 @@
 
 #include <QDebug>
 
-namespace media = core::ubuntu::media;
+namespace media = lomiri::MediaHub;
 
 AalAudioRoleControl::AalAudioRoleControl
-    (const std::shared_ptr<core::ubuntu::media::Player>& playerSession)
+    (const std::shared_ptr<lomiri::MediaHub::Player>& playerSession)
     : QAudioRoleControl()
     , m_audioRole(QAudio::MusicRole)
     , m_hubPlayerSession(playerSession)
@@ -41,13 +41,7 @@ void AalAudioRoleControl::setAudioRole(QAudio::Role role)
         return;
     }
 
-    try {
-        m_hubPlayerSession->audio_stream_role().set(fromQAudioRole(role));
-    }
-    catch (const std::runtime_error &e) {
-        qWarning() << "Failed to set audio stream role: " << e.what();
-        return;
-    }
+    m_hubPlayerSession->setAudioStreamRole(fromQAudioRole(role));
 
     if (role != m_audioRole)
         Q_EMIT audioRoleChanged(m_audioRole = role);
@@ -67,16 +61,16 @@ QAudio::Role AalAudioRoleControl::toQAudioRole(const media::Player::AudioStreamR
 {
     switch (role)
     {
-        case media::Player::AudioStreamRole::multimedia:
+        case media::Player::AudioStreamRole::MultimediaRole:
             return QAudio::MusicRole;
-        case media::Player::AudioStreamRole::alarm:
+        case media::Player::AudioStreamRole::AlarmRole:
             return QAudio::AlarmRole;
-        case media::Player::AudioStreamRole::alert:
+        case media::Player::AudioStreamRole::AlertRole:
             return QAudio::NotificationRole;
-        case media::Player::AudioStreamRole::phone:
+        case media::Player::AudioStreamRole::PhoneRole:
             return QAudio::VoiceCommunicationRole;
         default:
-            qWarning() << "Unhandled or invalid core::ubuntu::media::AudioStreamRole: " << role;
+            qWarning() << "Unhandled or invalid lomiri::MediaHub::AudioStreamRole: " << role;
             return QAudio::MusicRole;
     }
 }
@@ -85,22 +79,22 @@ media::Player::AudioStreamRole AalAudioRoleControl::fromQAudioRole(const QAudio:
 {
     // If we don't have a valid role, this should be the default translation
     if (role == QAudio::Role::UnknownRole)
-        return media::Player::AudioStreamRole::multimedia;
+        return media::Player::AudioStreamRole::MultimediaRole;
 
     switch (role)
     {
         case QAudio::MusicRole:
         case QAudio::VideoRole:
-            return media::Player::AudioStreamRole::multimedia;
+            return media::Player::AudioStreamRole::MultimediaRole;
         case QAudio::AlarmRole:
-            return media::Player::AudioStreamRole::alarm;
+            return media::Player::AudioStreamRole::AlarmRole;
         case QAudio::NotificationRole:
         case QAudio::RingtoneRole:
-            return media::Player::AudioStreamRole::alert;
+            return media::Player::AudioStreamRole::AlertRole;
         case QAudio::VoiceCommunicationRole:
-            return media::Player::AudioStreamRole::phone;
+            return media::Player::AudioStreamRole::PhoneRole;
         default:
             qWarning() << "Unhandled or invalid QAudio::Role:" << role;
-            return media::Player::AudioStreamRole::multimedia;
+            return media::Player::AudioStreamRole::MultimediaRole;
     }
 }

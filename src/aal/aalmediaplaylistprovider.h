@@ -19,15 +19,13 @@
 
 #include <private/qmediaplaylistprovider_p.h>
 
-#include <core/media/player.h>
-#include <core/media/track.h>
-#include <core/media/track_list.h>
+#include <MediaHub/Player>
+#include <MediaHub/Track>
+#include <MediaHub/TrackList>
 
-#include <core/connection.h>
-
+#include <QScopedPointer>
 #include <atomic>
 #include <memory>
-#include <vector>
 
 QT_BEGIN_NAMESPACE
 
@@ -38,8 +36,6 @@ class AalMediaPlaylistProvider : public QMediaPlaylistProvider
 Q_OBJECT
 public:
     friend class AalMediaPlaylistControl;
-
-    typedef std::vector<core::ubuntu::media::Track::Id> ContainerTrackLut;
 
     AalMediaPlaylistProvider(QObject *parent=0);
     ~AalMediaPlaylistProvider();
@@ -58,8 +54,7 @@ public:
     bool removeMedia(int start, int end);
     bool clear();
 
-    ContainerTrackLut::const_iterator getTrackPosition(const core::ubuntu::media::Track::Id &id) const;
-    bool isTrackEnd(const ContainerTrackLut::const_iterator &it);
+    bool isTrackEnd(int index/* TODO const ContainerTrackLut::const_iterator &it*/);
 
 Q_SIGNALS:
     void startMoveTrack(int from, int to);
@@ -69,32 +64,11 @@ Q_SIGNALS:
     void removeTracks(int start, int end);
 
 private:
-    void setPlayerSession(const std::shared_ptr<core::ubuntu::media::Player>& playerSession);
+    void setPlayerSession(const std::shared_ptr<lomiri::MediaHub::Player> &playerSession);
     void connect_signals();
     void disconnect_signals();
-    // Moves a track within the local track_index_lut
-    bool moveTrack(int from, int to);
-    bool removeTrack(const core::ubuntu::media::Track::Id &id);
-    // Finds the index of the first tracks that matches id, or the last if reverse is true
-    int indexOfTrack(const core::ubuntu::media::Track::Id &id, bool reverse=false) const;
-    const core::ubuntu::media::Track::Id trackOfIndex(int index) const;
-
-    std::shared_ptr<core::ubuntu::media::Player> m_hubPlayerSession;
-    std::shared_ptr<core::ubuntu::media::TrackList> m_hubTrackList;
-
-    core::Connection m_trackAddedConnection;
-    core::Connection m_tracksAddedConnection;
-    core::Connection m_trackRemovedConnection;
-    core::Connection m_trackListResetConnection;
-
-    // Simple table that holds a list (order is significant and explicit) of
-    // Track::Id's for a lookup. track_index_lut.at[x] gives the corresponding
-    // Track::Id for index x, and vice-versa.
-    std::vector<core::ubuntu::media::Track::Id> track_index_lut;
-
-    // Did the client perform an insertTrack() (as opposed to an addTrack()) operation?
-    // If yes, the index will be zero or greater, if not index will be -1;
-    std::atomic<int> m_insertTrackIndex;
+    std::shared_ptr<lomiri::MediaHub::Player> m_hubPlayerSession;
+    QScopedPointer<lomiri::MediaHub::TrackList> m_hubTrackList;
 };
 
 QT_END_NAMESPACE
