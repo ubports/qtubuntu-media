@@ -17,15 +17,17 @@
 #ifndef AALAUDIOROLECONTROL_H
 #define AALAUDIOROLECONTROL_H
 
-#include <core/media/player.h>
+#include <MediaHub/Player>
 
 #include <qaudiorolecontrol.h>
+
+#include <memory>
 
 class AalAudioRoleControl : public QAudioRoleControl
 {
 public:
     explicit AalAudioRoleControl
-        (const std::shared_ptr<core::ubuntu::media::Player>& playerSession);
+        (const std::shared_ptr<lomiri::MediaHub::Player>& playerSession);
     AalAudioRoleControl(const AalAudioRoleControl&) = delete;
 
     AalAudioRoleControl& operator=(const AalAudioRoleControl&) = delete;
@@ -36,13 +38,13 @@ public:
     QList<QAudio::Role> supportedAudioRoles() const;
 
     static QAudio::Role toQAudioRole
-        (const core::ubuntu::media::Player::AudioStreamRole &role);
-    static core::ubuntu::media::Player::AudioStreamRole fromQAudioRole
+        (const lomiri::MediaHub::Player::AudioStreamRole &role);
+    static lomiri::MediaHub::Player::AudioStreamRole fromQAudioRole
         (const QAudio::Role &role);
 
 private:
     QAudio::Role m_audioRole;
-    std::shared_ptr<core::ubuntu::media::Player> m_hubPlayerSession;
+    std::shared_ptr<lomiri::MediaHub::Player> m_hubPlayerSession;
 };
 
 #endif // AALAUDIOROLECONTROL_H

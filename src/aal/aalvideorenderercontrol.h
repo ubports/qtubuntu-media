@@ -17,13 +17,8 @@
 #ifndef AALVIDEORENDERERCONTROL_H
 #define AALVIDEORENDERERCONTROL_H
 
-#include <core/media/player.h>
-#include <core/media/video/dimensions.h>
-#include <core/media/video/sink.h>
-
-#include <core/connection.h>
-
-#include <memory>
+#include <MediaHub/Player>
+#include <MediaHub/VideoSink>
 
 #include <QImage>
 #include <QVideoFrame>
@@ -77,17 +72,17 @@ private Q_SLOTS:
     void onGLConsumerSet();
 
 private:
-    void onVideoDimensionChanged(const core::ubuntu::media::video::Dimensions& dimensions);
+    void onVideoDimensionChanged(const QSize &dimensions);
     void onFrameAvailable();
     void presentVideoFrame(const QVideoFrame &frame, bool empty = false);
 
     QAbstractVideoSurface *m_surface;
     AalMediaPlayerService *m_service;
-    std::shared_ptr<core::ubuntu::media::video::Sink> m_videoSink;
+    lomiri::MediaHub::VideoSink *m_videoSink;
     AalGLTextureBuffer *m_textureBuffer;
     GLuint m_textureId;
 
-    core::ubuntu::media::Player::Orientation m_orientation;
+    lomiri::MediaHub::Player::Orientation m_orientation;
     uint32_t m_height;
     uint32_t m_width;
     bool m_autoPlay;
@@ -97,8 +92,6 @@ private:
 
     bool m_firstFrame;
     bool m_secondFrame;
-
-    std::unique_ptr<core::Connection> m_frameAvailableConnection;
 
 #ifdef MEASURE_PERFORMANCE
     qint64 m_lastFrameRenderStart;

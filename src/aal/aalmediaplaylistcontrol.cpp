@@ -17,8 +17,6 @@
 #include "aalmediaplaylistcontrol.h"
 #include "aalmediaplaylistprovider.h"
 
-#include <core/signal.h>
-
 #include <QEventLoop>
 #include <QMediaPlaylist>
 
@@ -27,29 +25,19 @@
 // Uncomment for more verbose debugging to stdout/err
 //#define VERBOSE_DEBUG
 
-namespace media = core::ubuntu::media;
-
-Q_DECLARE_METATYPE(core::ubuntu::media::Track::Id)
+namespace media = lomiri::MediaHub;
 
 QT_BEGIN_NAMESPACE
-
-namespace {
-core::Signal<void> the_void;
-}
 
 AalMediaPlaylistControl::AalMediaPlaylistControl(QObject *parent)
     : QMediaPlaylistControl(parent),
       m_playlistProvider(nullptr),
-      m_currentIndex(0),
-      m_trackChangedConnection(the_void.connect([](){})),
-      m_trackMovedConnection(the_void.connect([](){}))
+      m_currentIndex(0)
 {
-    qRegisterMetaType<core::ubuntu::media::Track::Id>();
 }
 
 AalMediaPlaylistControl::~AalMediaPlaylistControl()
 {
-    disconnect_signals();
 }
 
 QMediaPlaylistProvider* AalMediaPlaylistControl::playlistProvider() const
@@ -72,11 +60,6 @@ int AalMediaPlaylistControl::currentIndex() const
 
 void AalMediaPlaylistControl::setCurrentIndex(int position)
 {
-    if (!m_hubTrackList) {
-        qWarning() << "Track list does not exist so can't change current position";
-        return;
-    }
-
     qDebug() << Q_FUNC_INFO;
     const auto mediaCount = m_playlistProvider->mediaCount();
     qDebug() << "position: " << position << ", mediaCount: " << mediaCount;
@@ -86,13 +69,7 @@ void AalMediaPlaylistControl::setCurrentIndex(int position)
 
     qDebug() << "Going to position: " << position;
 
-    try {
-        const std::string id = aalMediaPlaylistProvider()->trackOfIndex(position);
-        m_hubTrackList->go_to(id);
-    }
-    catch (const std::runtime_error &e) {
-        qWarning() << "Failed to go to specified tracklist position: " << e.what();
-    }
+    m_hubTrackList->goTo(position);
 }
 
 int AalMediaPlaylistControl::nextIndex(int steps) const
@@ -156,58 +133,40 @@ void AalMediaPlaylistControl::next()
 {
     qDebug() << Q_FUNC_INFO;
 
-    try {
-        m_hubPlayerSession->next();
-    }
-    catch (const std::runtime_error &e) {
-        qWarning() << "Failed to go to next track: " << e.what();
-    }
+    m_hubPlayerSession->goToNext();
 }
 
 void AalMediaPlaylistControl::previous()
 {
     qDebug() << Q_FUNC_INFO;
 
-    try {
-        m_hubPlayerSession->previous();
-    }
-    catch (const std::runtime_error &e) {
-        qWarning() << "Failed to go to previous track: " << e.what();
-    }
+    m_hubPlayerSession->goToPrevious();
 }
 
 QMediaPlaylist::PlaybackMode AalMediaPlaylistControl::playbackMode() const
 {
     QMediaPlaylist::PlaybackMode currentMode = QMediaPlaylist::Sequential;
-    media::Player::LoopStatus loopStatus = media::Player::LoopStatus::none;
-    try {
-        loopStatus = m_hubPlayerSession->loop_status();
-    } catch (const std::runtime_error &e) {
-        qWarning() << "Failed to go to get loop_status: " << e.what();
-    }
+    media::Player::LoopStatus loopStatus = media::Player::LoopStatus::LoopNone;
+    loopStatus = m_hubPlayerSession->loopStatus();
     switch (loopStatus)
     {
-        case media::Player::LoopStatus::none:
+        case media::Player::LoopStatus::LoopNone:
             currentMode = QMediaPlaylist::Sequential;
             break;
-        case media::Player::LoopStatus::track:
+        case media::Player::LoopStatus::LoopTrack:
             currentMode = QMediaPlaylist::CurrentItemInLoop;
             break;
-        case media::Player::LoopStatus::playlist:
+        case media::Player::LoopStatus::LoopPlaylist:
             currentMode = QMediaPlaylist::Loop;
             break;
         default:
             qWarning() << "Unknown loop status: " << loopStatus;
     }
 
-    try {
-        // Shuffle overrides loopStatus since in the media-hub API random is not part of loop_status
-        // like it's all one for QMediaPlaylist::PlaybackMode
-        if (m_hubPlayerSession->shuffle())
-            currentMode = QMediaPlaylist::Random;
-    } catch (const std::runtime_error &e) {
-        qWarning() << "Failed to get current shuffle mode: " << e.what();
-    }
+    // Shuffle overrides loopStatus since in the media-hub API random is not part of loop_status
+    // like it's all one for QMediaPlaylist::PlaybackMode
+    if (m_hubPlayerSession->shuffle())
+        currentMode = QMediaPlaylist::Random;
 
     return currentMode;
 }
@@ -219,96 +178,59 @@ void AalMediaPlaylistControl::setPlaybackMode(QMediaPlaylist::PlaybackMode mode)
     {
         case QMediaPlaylist::CurrentItemOnce:
             qDebug() << "PlaybackMode: CurrentItemOnce";
-            try {
-                m_hubPlayerSession->shuffle() = false;
-            } catch (const std::runtime_error &e) {
-                qWarning() << "Failed to set shuffle mode: " << e.what();
-            }
+            m_hubPlayerSession->setShuffle(false);
             qWarning() << "No media-hub equivalent for QMediaPlaylist::CurrentItemOnce";
             break;
         case QMediaPlaylist::CurrentItemInLoop:
             qDebug() << "PlaybackMode: CurrentItemInLoop";
-            try {
-                m_hubPlayerSession->shuffle() = false;
-                m_hubPlayerSession->loop_status() = media::Player::LoopStatus::track;
-            } catch (const std::runtime_error &e) {
-                qWarning() << "Failed to set shuffle mode/loop_status: " << e.what();
-            }
+            m_hubPlayerSession->setShuffle(false);
+            m_hubPlayerSession->setLoopStatus(media::Player::LoopStatus::LoopTrack);
             break;
         case QMediaPlaylist::Sequential:
             qDebug() << "PlaybackMode: Sequential";
-            try {
-                m_hubPlayerSession->shuffle() = false;
-                m_hubPlayerSession->loop_status() = media::Player::LoopStatus::none;
-            } catch (const std::runtime_error &e) {
-                qWarning() << "Failed to set shuffle mode/loop_status: " << e.what();
-            }
+            m_hubPlayerSession->setShuffle(false);
+            m_hubPlayerSession->setLoopStatus(media::Player::LoopStatus::LoopNone);
             break;
         case QMediaPlaylist::Loop:
             qDebug() << "PlaybackMode: Loop";
-            try {
-                m_hubPlayerSession->shuffle() = false;
-                m_hubPlayerSession->loop_status() = media::Player::LoopStatus::playlist;
-            } catch (const std::runtime_error &e) {
-                qWarning() << "Failed to set shuffle mode/loop_status: " << e.what();
-            }
+            m_hubPlayerSession->setShuffle(false);
+            m_hubPlayerSession->setLoopStatus(media::Player::LoopStatus::LoopPlaylist);
             break;
         case QMediaPlaylist::Random:
             qDebug() << "PlaybackMode: Random";
-            try {
-                m_hubPlayerSession->shuffle() = true;
+            m_hubPlayerSession->setShuffle(true);
                 // FIXME: Until pad.lv/1518157 (RandomAndLoop playbackMode) is
                 // fixed set Random to be always looping due to pad.lv/1531296
-                m_hubPlayerSession->loop_status() = media::Player::LoopStatus::playlist;
-            } catch (const std::runtime_error &e) {
-                qWarning() << "Failed to set shuffle mode/loop_status: " << e.what();
-            }
+            m_hubPlayerSession->setLoopStatus(media::Player::LoopStatus::LoopPlaylist);
             break;
         default:
             qWarning() << "Unknown playback mode: " << mode;
-            try {
-                m_hubPlayerSession->shuffle() = false;
-            } catch (const std::runtime_error &e) {
-                qWarning() << "Failed to get current shuffle mode: " << e.what();
-            }
+            m_hubPlayerSession->setShuffle(false);
     }
 
     Q_EMIT playbackModeChanged(mode);
 }
 
-void AalMediaPlaylistControl::setPlayerSession(const std::shared_ptr<core::ubuntu::media::Player>& playerSession)
+void AalMediaPlaylistControl::setPlayerSession(const std::shared_ptr<lomiri::MediaHub::Player>& playerSession)
 {
     m_hubPlayerSession = playerSession;
     aalMediaPlaylistProvider()->setPlayerSession(playerSession);
 
-    try {
-        m_hubTrackList = m_hubPlayerSession->track_list();
-    }
-    catch (std::runtime_error &e) {
-        qWarning() << "FATAL: Failed to retrieve the current player session TrackList: " << e.what();
+    m_hubTrackList = m_hubPlayerSession->trackList();
+    if (!m_hubTrackList) {
+        qWarning() << "FATAL: Failed to retrieve the current player session TrackList";
     }
 
     connect_signals();
 }
 
-void AalMediaPlaylistControl::onTrackChanged(const core::ubuntu::media::Track::Id& id)
+void AalMediaPlaylistControl::onTrackChanged()
 {
-    if (!id.empty())
-    {
-        m_currentIndex = aalMediaPlaylistProvider()->indexOfTrack(id);
-        m_currentId = id;
-        qDebug() << "m_currentIndex updated to: " << m_currentIndex;
-        const QMediaContent content = playlistProvider()->media(m_currentIndex);
-        Q_EMIT currentMediaChanged(content);
-        Q_EMIT currentIndexChanged(m_currentIndex);
-    }
-}
-
-void AalMediaPlaylistControl::onStartMoveTrack(int from, int to)
-{
-    Q_UNUSED(from);
-    Q_UNUSED(to);
-    m_currentId = aalMediaPlaylistProvider()->trackOfIndex(m_currentIndex);
+    m_currentIndex = m_hubTrackList->currentTrack();
+    qDebug() << "m_currentIndex updated to: " << m_currentIndex;
+    const QMediaContent content = playlistProvider()->media(m_currentIndex);
+    Q_EMIT currentMediaChanged(content);
+    Q_EMIT currentIndexChanged(m_currentIndex);
 }
 
 void AalMediaPlaylistControl::onMediaRemoved(int start, int end)
@@ -324,7 +246,6 @@ void AalMediaPlaylistControl::onMediaRemoved(int start, int end)
     {
         qDebug() << "Tracklist was cleared, resetting m_currentIndex to 0";
         m_currentIndex = 0;
-        m_currentId.clear();
     }
 }
 
@@ -356,7 +277,7 @@ void AalMediaPlaylistControl::onRemoveTracks(int start, int end)
 
 void AalMediaPlaylistControl::onCurrentIndexChanged()
 {
-    const int index = aalMediaPlaylistProvider()->indexOfTrack(m_currentId);
+    const int index = m_hubTrackList->currentTrack();
     if (index != m_currentIndex) {
         qDebug() << "Index changed to" << index;
         m_currentIndex = index;
@@ -374,51 +295,8 @@ void AalMediaPlaylistControl::connect_signals()
         return;
     }
 
-    m_trackChangedConnection = m_hubTrackList->on_track_changed().connect([this](const media::Track::Id& id)
-    {
-        QMetaObject::invokeMethod(this, "onTrackChanged", Qt::QueuedConnection, Q_ARG(core::ubuntu::media::Track::Id, id));
-    });
-
-    m_trackMovedConnection = m_hubTrackList->on_track_moved().connect([this]
-            (const media::TrackList::TrackIdTuple& ids)
-    {
-        qDebug() << "-------------------------------------------------";
-        qDebug() << "source id:" << std::get<0>(ids).c_str();
-        qDebug() << "dest id:" << std::get<1>(ids).c_str();
-
-        if (!m_currentId.empty())
-        {
-            const auto new_current_track_it = aalMediaPlaylistProvider()->getTrackPosition(m_currentId);
-            if (!aalMediaPlaylistProvider()->isTrackEnd(new_current_track_it))
-            {
-                const int newCurrentIndex = aalMediaPlaylistProvider()->indexOfTrack(*new_current_track_it);
-                if (newCurrentIndex == -1)
-                    qWarning() << "Can't update m_currentIndex - failed to find track in track_index_lut after move";
-
-                if (m_currentIndex != newCurrentIndex)
-                {
-                    m_currentIndex = newCurrentIndex;
-                    Q_EMIT currentIndexChanged(m_currentIndex);
-                    qDebug() << "*** Updated m_currentIndex: " << m_currentIndex;
-                }
-            }
-            else
-            {
-                qWarning() << "Can't update m_currentIndex - failed to find track in track_index_lut after move";
-            }
-        }
-        else
-        {
-            qWarning() << "Can't update m_currentIndex - failed to find track in track_index_lut after move";
-        }
-
-        m_currentId.clear();
-
-        qDebug() << "-------------------------------------------------";
-    });
-
-    connect(aalMediaPlaylistProvider(), &AalMediaPlaylistProvider::startMoveTrack,
-            this, &AalMediaPlaylistControl::onStartMoveTrack);
+    QObject::connect(m_hubTrackList, &media::TrackList::currentTrackChanged,
+                     this, &AalMediaPlaylistControl::onTrackChanged);
 
     connect(aalMediaPlaylistProvider(), &AalMediaPlaylistProvider::mediaRemoved,
             this, &AalMediaPlaylistControl::onMediaRemoved);
@@ -429,11 +307,7 @@ void AalMediaPlaylistControl::connect_signals()
 
 void AalMediaPlaylistControl::disconnect_signals()
 {
-    if (m_trackMovedConnection.is_connected())
-        m_trackMovedConnection.disconnect();
-
-    if (m_trackChangedConnection.is_connected())
-        m_trackChangedConnection.disconnect();
+    QObject::disconnect(m_hubTrackList, nullptr, this, nullptr);
 }
 
 AalMediaPlaylistProvider* AalMediaPlaylistControl::aalMediaPlaylistProvider()

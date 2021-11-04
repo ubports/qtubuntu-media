@@ -19,9 +19,7 @@
 
 #include "aalvideorenderercontrol.h"
 
-#include <core/media/player.h>
-
-#include <core/connection.h>
+#include <MediaHub/Player>
 
 #include <qmediaplayer.h>
 #include <QMediaPlaylist>
@@ -38,14 +36,11 @@ class AalAudioRoleControl;
 class tst_MediaPlayerPlugin;
 class QTimerEvent;
 
-namespace core { namespace ubuntu { namespace media {
-namespace video {
-    class Sink;
-}
-class Service;
+namespace lomiri { namespace MediaHub {
 class Player;
 class TrackList;
-} } }
+class VideoSink;
+} }
 
 class AalMediaPlayerService : public QMediaService
 {
@@ -58,8 +53,6 @@ public:
     typedef void *GLConsumerWrapperHybris;
 
     AalMediaPlayerService(QObject *parent = 0);
-    AalMediaPlayerService(const std::shared_ptr<core::ubuntu::media::Service> &service,
-            QObject *parent = 0);
     ~AalMediaPlayerService();
 
     QMediaControl* requestControl(const char *name);
@@ -71,7 +64,7 @@ public:
 
     bool newMediaPlayer();
 
-    std::shared_ptr<core::ubuntu::media::video::Sink> createVideoSink(uint32_t texture_id);
+    lomiri::MediaHub::VideoSink &createVideoSink(uint32_t texture_id);
     // Call this before attempting to play the same video a second time (after EOS)
     void resetVideoSink();
 
@@ -94,21 +87,18 @@ public:
 
     void pushPlaylist();
 
-    const std::shared_ptr<core::ubuntu::media::Player>& getPlayer() const { return m_hubPlayerSession; }
+    const std::shared_ptr<lomiri::MediaHub::Player>& getPlayer() const { return m_hubPlayerSession; }
 
     /* This is for unittest purposes to be able to set a mock-object version of a
      * player object */
-    void setPlayer(const std::shared_ptr<core::ubuntu::media::Player> &player);
-    /* This is for unittest purposes to be able to set a mock-object version of a
-     * service object */
-    void setService(const std::shared_ptr<core::ubuntu::media::Service> &service);
+    void setPlayer(const std::shared_ptr<lomiri::MediaHub::Player> &player);
 
     int bufferStatus() { return m_bufferPercent; }
 
 Q_SIGNALS:
     void serviceReady();
     void playbackComplete();
-    void playbackStatusChanged(const core::ubuntu::media::Player::PlaybackStatus &status);
+    void playbackStatusChanged(const lomiri::MediaHub::Player::PlaybackStatus &status);
 
 public Q_SLOTS:
     void onPlaybackStatusChanged();
@@ -138,20 +128,13 @@ private:
     void deletePlaylistControl();
     void deleteAudioRoleControl();
 
-    // Signals the proper QMediaPlayer::Error from a core::ubuntu::media::Error
-    void signalQMediaPlayerError(const core::ubuntu::media::Player::Error &error);
-    void onError(const core::ubuntu::media::Player::Error &error);
+    // Signals the proper QMediaPlayer::Error from a lomiri::MediaHub
+    void signalQMediaPlayerError(const lomiri::MediaHub::Error &error);
+    void onError(const lomiri::MediaHub::Error &error);
 
-    inline QString playbackStatusStr(const core::ubuntu::media::Player::PlaybackStatus &status);
+    inline QString playbackStatusStr(const lomiri::MediaHub::Player::PlaybackStatus &status);
 
-    std::shared_ptr<core::ubuntu::media::Service> m_hubService;
-    std::shared_ptr<core::ubuntu::media::Player> m_hubPlayerSession;
-    core::Connection m_playbackStatusChangedConnection;
-    core::Connection m_errorConnection;
-    core::Connection m_endOfStreamConnection;
-    core::Connection m_serviceDisconnectedConnection;
-    core::Connection m_serviceReconnectedConnection;
-    core::Connection m_bufferingStatusChangedConnection;
+    std::shared_ptr<lomiri::MediaHub::Player> m_hubPlayerSession;
 
     AalMediaPlayerControl *m_mediaPlayerControl;
     AalVideoRendererControl *m_videoOutput;
@@ -161,14 +144,14 @@ private:
     bool m_videoOutputReady;
     bool m_firstPlayback;
 
-    int64_t m_cachedDuration;
+    uint64_t m_cachedDuration;
 
     const QMediaPlaylist* m_mediaPlaylist;
 
-    core::ubuntu::media::Player::PlaybackStatus m_newStatus;
+    lomiri::MediaHub::Player::PlaybackStatus m_newStatus;
     int m_bufferPercent;
 
-    std::string m_sessionUuid;
+    QString m_sessionUuid;
     bool m_doReattachSession;
 
 #ifdef MEASURE_PERFORMANCE

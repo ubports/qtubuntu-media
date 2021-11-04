@@ -19,10 +19,8 @@
 
 #include <qmediaplaylistcontrol_p.h>
 
-#include <core/media/player.h>
-#include <core/media/track_list.h>
-
-#include <core/connection.h>
+#include <MediaHub/Player>
+#include <MediaHub/TrackList>
 
 #include <memory>
 
@@ -52,7 +50,7 @@ public:
     QMediaPlaylist::PlaybackMode playbackMode() const;
     void setPlaybackMode(QMediaPlaylist::PlaybackMode mode);
 
-    void setPlayerSession(const std::shared_ptr<core::ubuntu::media::Player>& playerSession);
+    void setPlayerSession(const std::shared_ptr<lomiri::MediaHub::Player>& playerSession);
 
 Q_SIGNALS:
     void playlistProviderChanged();
@@ -61,8 +59,7 @@ Q_SIGNALS:
     void playbackModeChanged(QMediaPlaylist::PlaybackMode mode);
 
 private Q_SLOTS:
-    void onTrackChanged(const core::ubuntu::media::Track::Id& id);
-    void onStartMoveTrack(int from, int to);
+    void onTrackChanged();
     void onMediaRemoved(int start, int end);
     void onRemoveTracks(int start, int end);
     void onCurrentIndexChanged();
@@ -72,15 +69,11 @@ private:
     void disconnect_signals();
     inline AalMediaPlaylistProvider* aalMediaPlaylistProvider();
 
-    std::shared_ptr<core::ubuntu::media::Player> m_hubPlayerSession;
-    std::shared_ptr<core::ubuntu::media::TrackList> m_hubTrackList;
+    std::shared_ptr<lomiri::MediaHub::Player> m_hubPlayerSession;
+    lomiri::MediaHub::TrackList *m_hubTrackList;
     QMediaPlaylistProvider *m_playlistProvider;
 
     int m_currentIndex;
-    core::ubuntu::media::Track::Id m_currentId;
-
-    core::Connection m_trackChangedConnection;
-    core::Connection m_trackMovedConnection;
 };
 
 QT_END_NAMESPACE

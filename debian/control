@@ -3,20 +3,16 @@ Section: libs
 Priority: optional
 Maintainer: Ubuntu Developers <ubuntu-devel-discuss@lists.ubuntu.com>
 Build-Depends: debhelper (>= 9),
-# We rely on C++11 features, and to prevent from ABI breaks
-# in libstdc++ causing us issues, we explicitly select a G++
-# version.
                libgl1-mesa-dev | libgl-dev,
                libgles2-mesa-dev,
                libhybris-dev (>= 0.1.0+git20131207+e452e83-0ubuntu13),
-               libmedia-hub-dev (>= 4.6.0),
+               libmedia-hub-qt-dev,
                libpulse-dev,
                libqt5opengl5-dev,
                libqtubuntu-media-signals-dev (>= 0.3+15.04.20150618.1-0ubuntu1),
                libubuntu-application-api-headers,
                libubuntu-application-api-dev,
                pkg-config,
-               qt5-default,
                qtbase5-dev,
                qtdeclarative5-dev,
                qtmultimedia5-dev,

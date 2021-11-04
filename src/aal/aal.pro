@@ -2,7 +2,8 @@ include(../../coverage.pri)
 TARGET = aalmediaplayer
 QT += multimedia opengl
 TEMPLATE = lib
-CONFIG += plugin no_keywords
+CONFIG += plugin no_keywords link_pkgconfig
+PKGCONFIG += MediaHub
 QMAKE_CXXFLAGS += -std=c++11
 PLUGIN_TYPE = mediaservice
 
@@ -12,7 +13,6 @@ INSTALLS = target
 INCLUDEPATH += /usr/include/hybris /usr/include/libqtubuntu-media-signals
 LIBS += \
     -lhybris-common -lubuntu_application_api -lmedia -lqtubuntu-media-signals \
-    -lmedia-hub-client
 
 OTHER_FILES += aalmediaplayer.json
 

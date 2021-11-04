@@ -38,10 +38,7 @@
 
 #include <qgl.h>
 
-// Make the video sink ptr known to qt.
-Q_DECLARE_METATYPE(std::shared_ptr<core::ubuntu::media::video::Sink>);
-
-namespace media = core::ubuntu::media;
+namespace media = lomiri::MediaHub;
 using namespace std::placeholders;
 
 class AalGLTextureBuffer : public QAbstractVideoBuffer
@@ -86,7 +83,7 @@ AalVideoRendererControl::AalVideoRendererControl(AalMediaPlayerService *service,
      m_service(service),
      m_textureBuffer(0),
      m_textureId(0),
-     m_orientation(media::Player::Orientation::rotate0),
+     m_orientation(media::Player::Orientation::Rotate0),
      m_height(0),
      m_width(0),
      m_autoPlay(false),
@@ -111,13 +108,6 @@ AalVideoRendererControl::AalVideoRendererControl(AalMediaPlayerService *service,
 
 AalVideoRendererControl::~AalVideoRendererControl()
 {
-    if (m_frameAvailableConnection && m_frameAvailableConnection->is_connected())
-    {
-        // This is important so that we don't receive anymore frame_available callbacks from
-        // the PlayerStub once this instance is destroyed
-        m_frameAvailableConnection->disconnect();
-    }
-
     if (m_textureBuffer) {
         GLuint textureId = m_textureBuffer->handle().toUInt();
         if (textureId > 0)
@@ -175,13 +165,15 @@ void AalVideoRendererControl::playbackComplete()
 
 void AalVideoRendererControl::setupSurface()
 {
-    m_service->getPlayer()->video_dimension_changed().connect(
-            std::bind(&AalVideoRendererControl::onVideoDimensionChanged, this, _1));
+    media::Player *player = m_service->getPlayer().get();
+    QObject::connect(player, &media::Player::videoDimensionChanged,
+                     this, &AalVideoRendererControl::onVideoDimensionChanged);
 
     // When orientation changes during playback, cache a copy here
-    m_service->getPlayer()->orientation().changed().connect([this](const media::Player::Orientation &orientation)
+    QObject::connect(player, &media::Player::orientationChanged,
+                     this, [this, player]()
     {
-        m_orientation = orientation;
+        m_orientation = player->orientation();
     });
 
     if (!m_textureBuffer)
@@ -193,25 +185,23 @@ void AalVideoRendererControl::setupSurface()
     updateVideoTexture();
 }
 
-void AalVideoRendererControl::onVideoDimensionChanged(const core::ubuntu::media::video::Dimensions& dimensions)
+void AalVideoRendererControl::onVideoDimensionChanged(const QSize &dimensions)
 {
-    qDebug() << Q_FUNC_INFO;
-    const uint32_t width = std::get<1>(dimensions).as<uint32_t>();
-    const uint32_t height = std::get<0>(dimensions).as<uint32_t>();
+    qDebug() << Q_FUNC_INFO << dimensions;
+    QSize frameSize;
 
     // Make sure that X & Y remain flipped between multiple playbacks in the
     // same session
-    if ((m_orientation == media::Player::Orientation::rotate90 ||
-         m_orientation == media::Player::Orientation::rotate270) && !m_flipped) {
-        m_height = width;
-        m_width = height;
+    if ((m_orientation == media::Player::Orientation::Rotate90 ||
+         m_orientation == media::Player::Orientation::Rotate270) && !m_flipped) {
+        frameSize = dimensions.transposed();
         m_flipped = true;
     } else {
-        m_height = height;
-        m_width = width;
+        frameSize = dimensions;
     }
 
-    QSize frameSize(m_width, m_height);
+    m_width = frameSize.width();
+    m_height = frameSize.height();
     Q_EMIT SharedSignal::instance()->setOrientation(static_cast<SharedSignal::Orientation>(m_orientation), frameSize);
 }
 
@@ -278,18 +268,11 @@ void AalVideoRendererControl::onTextureCreated(unsigned int textureID)
         // then removes the old one, but we need the resources from the old
         // object to create the new one, so we force the right order with an
         // initial pointer reset).
-        m_videoSink.reset();
-        m_videoSink = m_service->createVideoSink(textureID);
-        if (not m_videoSink)
-        {
-            qWarning() << "Failed to create a new video sink with texture ID ("
-                << textureID << "), m_videoSink is a nullptr";
-            return;
-        }
+        m_videoSink = &m_service->createVideoSink(textureID);
 
         // Connect callback so that frames are rendered after decoding
-        m_frameAvailableConnection.reset(new core::Connection(m_videoSink->frame_available().connect(
-                std::bind(&AalVideoRendererControl::onFrameAvailable, this))));
+        QObject::connect(m_videoSink, &media::VideoSink::frameAvailable,
+                         this, &AalVideoRendererControl::onFrameAvailable);
 
         // This call will make sure the video sink gets set on qtvideo-node
         updateVideoTexture();
