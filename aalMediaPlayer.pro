@@ -3,5 +3,8 @@ include(coverage.pri)
 TEMPLATE = subdirs
 
 SUBDIRS += \
-    src \
-    tests
+    src
+
+!CONFIG(no_tests) {
+    SUBDIRS += tests
+}
