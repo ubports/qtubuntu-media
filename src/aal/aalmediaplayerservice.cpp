@@ -552,10 +552,10 @@ void AalMediaPlayerService::onPlaybackStatusChanged()
     // the app is notified about this so it can change it's status
     switch (m_newStatus)
     {
-        case media::Player::PlaybackStatus::Ready:
         case media::Player::PlaybackStatus::Stopped:
             m_mediaPlayerControl->setState(QMediaPlayer::StoppedState);
             break;
+        case media::Player::PlaybackStatus::Ready:
         case media::Player::PlaybackStatus::Paused:
             m_mediaPlayerControl->setState(QMediaPlayer::PausedState);
             break;
