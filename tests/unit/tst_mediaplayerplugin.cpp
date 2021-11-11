@@ -15,7 +15,6 @@
  */
 
 #include "player.h"
-#include "service.h"
 #include "aalmediaplayerservice.h"
 #include "aalutility.h"
 #include "tst_mediaplayerplugin.h"
@@ -30,15 +29,11 @@
 #include "aalmediaplayercontrol.h"
 
 using namespace std;
-using namespace core::ubuntu::media;
+using namespace lomiri::MediaHub;
 
 void tst_MediaPlayerPlugin::init()
 {
-    m_hubService = TestService::Client::instance();
-    m_service = new AalMediaPlayerService(m_hubService, this);
-    m_service->setService(m_hubService);
-    m_player = m_hubService->create_session(TestPlayer::Client::default_configuration());
-    m_service->setPlayer(m_player);
+    m_service = new AalMediaPlayerService(this);
     m_playerControl = m_service->requestControl(QMediaPlayerControl_iid);
     m_mediaPlayerControl = m_service->mediaPlayerControl();
     QVERIFY(m_playerControl != NULL);
@@ -114,12 +109,12 @@ void tst_MediaPlayerPlugin::tst_position()
 {
     m_mediaPlayerControl->setPosition(1e6);
     qDebug() << "position: " << m_mediaPlayerControl->position();
-    QVERIFY(m_mediaPlayerControl->position() == 1e3);
+    QCOMPARE(m_mediaPlayerControl->position(), 1e3);
 }
 
 void tst_MediaPlayerPlugin::tst_duration()
 {
-    QVERIFY(m_mediaPlayerControl->duration() == 1);
+    QCOMPARE(m_mediaPlayerControl->duration(), 1);
 }
 
 void tst_MediaPlayerPlugin::tst_isAudioSource()

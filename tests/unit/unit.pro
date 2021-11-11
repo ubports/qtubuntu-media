@@ -1,14 +1,16 @@
 include(../../coverage.pri)
 
-CONFIG += testcase
+CONFIG += testcase link_pkgconfig
 QMAKE_CXXFLAGS += -std=c++11
 DEFINES += QT_NO_KEYWORDS
 TARGET = tst_mediaplayerplugin
 
 QT += multimedia opengl quick testlib
+PKGCONFIG += MediaHub
 
 INCLUDEPATH += ../../src/aal \
     /usr/include/qt5/QtMultimedia \
+    /usr/include/MediaHub \
     /usr/include/hybris \
     /usr/include/libqtubuntu-media-signals
 LIBS += \
@@ -25,16 +27,12 @@ HEADERS += \
     ../../src/aal/aalutility.h \
     tst_mediaplayerplugin.h \
     tst_mediaplaylistcontrol.h \
-    player.h \
-    service.h \
-    player_mock.h
+    player.h
 
 SOURCES += \
     tst_mediaplayerplugin.cpp \
     tst_mediaplaylistcontrol.cpp \
     player.cpp \
-    service.cpp \
-    player_mock.cpp \
     ../../src/aal/aalmediaplayercontrol.cpp \
     ../../src/aal/aalmediaplaylistprovider.cpp \
     ../../src/aal/aalmediaplaylistcontrol.cpp \

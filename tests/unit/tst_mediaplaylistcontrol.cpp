@@ -14,8 +14,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "player_mock.h"
-#include "service.h"
+#include "player.h"
 #include "aalmediaplayerservice.h"
 #include "aalmediaplaylistcontrol.h"
 #include "tst_mediaplayerplugin.h"
@@ -24,15 +23,11 @@
 #include <QObject>
 #include <QtTest/QtTest>
 
-using namespace core::ubuntu::media;
+using namespace lomiri::MediaHub;
 
 void tst_MediaPlaylistControl::initTestCase()
 {
-    m_hubService.reset(new TestService());
     m_service = new AalMediaPlayerService(this);
-    m_service->setService(m_hubService);
-    m_player.reset(new PlayerMock());
-    m_service->setPlayer(m_player);
 }
 
 void tst_MediaPlaylistControl::cleanupTestCase()

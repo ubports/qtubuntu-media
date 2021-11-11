@@ -17,7 +17,7 @@
 #ifndef TST_AALMEDIAPLAYLISTCONTROL_H
 #define TST_AALMEDIAPLAYLISTCONTROL_H
 
-#include <core/media/player.h>
+#include "player.h"
 
 #include <memory>
 
@@ -38,8 +38,8 @@ class tst_MediaPlaylistControl : public QObject
     AalMediaPlayerService *m_service;
     AalMediaPlaylistControl *m_mediaPlaylistControl;
     QMediaControl *m_playlistControl;
-    std::shared_ptr<core::ubuntu::media::Player> m_player;
-    std::shared_ptr<core::ubuntu::media::Service> m_hubService;
+    std::shared_ptr<lomiri::MediaHub::Player> m_player;
+    std::shared_ptr<lomiri::MediaHub::Service> m_hubService;
 
 Q_SIGNALS:
 

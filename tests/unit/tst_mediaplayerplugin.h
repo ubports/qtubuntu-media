@@ -14,7 +14,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <core/media/player.h>
+#include "player.h"
 
 #include <memory>
 
@@ -32,8 +32,8 @@ class tst_MediaPlayerPlugin : public QObject
     AalMediaPlayerControl *m_mediaPlayerControl;
     QMediaControl *m_playerControl;
     QMediaControl *m_rendererControl;
-    std::shared_ptr<core::ubuntu::media::Player> m_player;
-    std::shared_ptr<core::ubuntu::media::Service> m_hubService;
+    std::shared_ptr<lomiri::MediaHub::Player> m_player;
+    std::shared_ptr<lomiri::MediaHub::Service> m_hubService;
 
 private Q_SLOTS:
     // We want the setup to be run prior to every test case to
