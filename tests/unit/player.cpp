@@ -1,14 +1,16 @@
 /*
- * Copyright (C) 2013-2014 Canonical, Ltd.
+ * Copyright © 2021 UBports Foundation.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; version 3.
+ * Contact: Alberto Mardegan <mardy@users.sourceforge.net>
+ *
+ * This program is free software: you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License version 3,
+ * as published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
@@ -16,323 +18,268 @@
 
 #include "player.h"
 
-#include <QtGlobal>
-#include <QtTest/QtTest>
+#include <QDebug>
+#include <MediaHub/VideoSink>
 
-using namespace std;
+using namespace lomiri::MediaHub;
 
-struct core::ubuntu::media::TestPlayer::Configuration
+namespace lomiri {
+namespace MediaHub {
+
+class NullVideoSink: public VideoSink
 {
+    Q_OBJECT
+
+public:
+    NullVideoSink(): VideoSink(nullptr) {}
+
+    bool swapBuffers() override { return true; }
 };
 
-namespace core {
-namespace ubuntu {
-namespace media {
 
-typedef void* GLConsumerWrapperHybris;
-
-const TestPlayer::Configuration& TestPlayer::Client::default_configuration()
+class PlayerPrivate
 {
-    static const TestPlayer::Configuration config;
-    return config;
-}
+    Q_DECLARE_PUBLIC(Player)
 
-Player::Player()
-{
-}
+public:
+    PlayerPrivate(Player *q);
+    ~PlayerPrivate();
 
-Player::~Player()
-{
-}
+private:
+    bool m_canPlay = false;
+    bool m_canPause = false;
+    bool m_canSeek = false;
+    bool m_canGoPrevious = false;
+    bool m_canGoNext = false;
+    bool m_isVideoSource = true;
+    bool m_isAudioSource = true;
+    bool m_shuffle = false;
+    Player::Volume m_volume = 1.0;
+    Player::Orientation m_orientation = Player::Rotate0;
+    Track::MetaData m_metaData;
 
-TestPlayer::TestPlayer()
-{
-}
+    Player::PlaybackRate m_playbackRate = 1.0;
+    Player::PlaybackRate m_minimumPlaybackRate = 1.0;
+    Player::PlaybackRate m_maximumPlaybackRate = 1.0;
 
-TestPlayer::~TestPlayer()
-{
-}
+    quint64 m_position = 0;
+    quint64 m_duration = 1e6;
 
-std::string TestPlayer::uuid() const
-{
-    return std::string{};
-}
+    Player::PlaybackStatus m_playbackStatus = Player::Null;
 
-void TestPlayer::reconnect()
-{
-}
+    Player::AudioStreamRole m_audioStreamRole = Player::MultimediaRole;
+    QString m_uuid;
+    TrackList *m_trackList = nullptr;
+    NullVideoSink m_videoSink;
+    Player *q_ptr;
+};
 
-void TestPlayer::abandon()
-{
-}
+} // namespace MediaHub
+} // namespace lomiri
 
-shared_ptr<TrackList> TestPlayer::track_list()
-{
-    static shared_ptr<TrackList> ret(NULL);
-    return ret;
-}
-
-Player::PlayerKey TestPlayer::key() const
-{
-    return 0;
-}
-
-media::video::Sink::Ptr TestPlayer::create_gl_texture_video_sink(uint32_t texture_id)
-{
-    Q_UNUSED(texture_id);
-    throw std::runtime_error{"Not implemented"};
-}
-
-bool TestPlayer::open_uri(const Track::UriType& uri)
-{
-    Q_UNUSED(uri);
-    return true;
-}
-
-bool TestPlayer::open_uri(const Track::UriType& uri, const HeadersType&)
-{
-    Q_UNUSED(uri);
-    return true;
-}
-
-void TestPlayer::next()
+PlayerPrivate::PlayerPrivate(Player *q):
+    q_ptr(q)
 {
 }
 
-void TestPlayer::previous()
+PlayerPrivate::~PlayerPrivate()
 {
 }
 
-void TestPlayer::play()
+Player::Player(QObject *parent):
+    QObject(parent),
+    d_ptr(new PlayerPrivate(this))
 {
 }
 
-void TestPlayer::pause()
+Player::~Player() = default;
+
+QString Player::uuid() const
+{
+    Q_D(const Player);
+    return d->m_uuid;
+}
+
+void Player::setTrackList(TrackList *trackList)
+{
+    Q_D(Player);
+    d->m_trackList = trackList;
+}
+
+TrackList *Player::trackList() const
+{
+    Q_D(const Player);
+    return d->m_trackList;
+}
+
+VideoSink &Player::createGLTextureVideoSink(uint32_t textureId)
+{
+    Q_D(Player);
+    return d->m_videoSink;
+}
+
+void Player::openUri(const QUrl &uri, const Headers &headers)
 {
 }
 
-void TestPlayer::stop()
+void Player::goToNext()
 {
 }
 
-void TestPlayer::seek_to(const std::chrono::microseconds& offset)
+void Player::goToPrevious()
 {
-    m_position.set(offset.count());
 }
 
-const core::Property<bool>& TestPlayer::can_play() const
+void Player::play()
 {
-    static core::Property<bool> ret(true);
-    return ret;
 }
 
-const core::Property<bool>& TestPlayer::can_pause() const
+void Player::pause()
 {
-    static core::Property<bool> ret(true);
-    return ret;
 }
 
-const core::Property<bool>& TestPlayer::can_seek() const
+void Player::stop()
 {
-    static core::Property<bool> ret(true);
-    return ret;
 }
 
-const core::Property<bool>& TestPlayer::can_go_previous() const
+void Player::seekTo(uint64_t microseconds)
 {
-    static core::Property<bool> ret(true);
-    return ret;
+    Q_D(Player);
+    d->m_position = microseconds;
 }
 
-const core::Property<bool>& TestPlayer::can_go_next() const
+bool Player::canPlay() const
 {
-    static core::Property<bool> ret(true);
-    return ret;
+    Q_D(const Player);
+    return d->m_canPlay;
 }
 
-const core::Property<bool>& TestPlayer::is_video_source() const
+bool Player::canPause() const
 {
-    static core::Property<bool> ret(true);
-    return ret;
+    Q_D(const Player);
+    return d->m_canPause;
 }
 
-const core::Property<bool>& TestPlayer::is_audio_source() const
+bool Player::canSeek() const
 {
-    static core::Property<bool> ret(true);
-    return ret;
+    Q_D(const Player);
+    return d->m_canSeek;
 }
 
-const core::Property<TestPlayer::PlaybackStatus>& TestPlayer::playback_status() const
+bool Player::canGoPrevious() const
 {
-    static core::Property<Player::PlaybackStatus> ret(Player::PlaybackStatus::null);
-    return ret;
+    Q_D(const Player);
+    return d->m_canGoPrevious;
 }
 
-const core::Property<AVBackend::Backend>& TestPlayer::backend() const
+bool Player::canGoNext() const
 {
-    static core::Property<AVBackend::Backend> ret(AVBackend::Backend::none);
-    return ret;
+    Q_D(const Player);
+    return d->m_canGoNext;
 }
 
-const core::Property<Player::LoopStatus>& TestPlayer::loop_status() const
+bool Player::isVideoSource() const
 {
-    static core::Property<Player::LoopStatus> ret(Player::LoopStatus::none);
-    return ret;
+    Q_D(const Player);
+    return d->m_isVideoSource;
 }
 
-const core::Property<Player::PlaybackRate>& TestPlayer::playback_rate() const
+bool Player::isAudioSource() const
 {
-    static core::Property<Player::PlaybackRate> ret(1);
-    return ret;
+    Q_D(const Player);
+    return d->m_isAudioSource;
 }
 
-const core::Property<bool>& TestPlayer::shuffle() const
+Player::PlaybackStatus Player::playbackStatus() const
 {
-    static core::Property<bool> ret(true);
-    return ret;
+    Q_D(const Player);
+    return d->m_playbackStatus;
 }
 
-const core::Property<Track::MetaData>& TestPlayer::meta_data_for_current_track() const
+void Player::setPlaybackRate(PlaybackRate rate)
 {
-    static core::Property<Track::MetaData> ret;
-    return ret;
 }
 
-const core::Property<Player::Volume>& TestPlayer::volume() const
+Player::PlaybackRate Player::playbackRate() const
 {
-    static core::Property<Volume> ret(1);
-    return ret;
+    Q_D(const Player);
+    return d->m_playbackRate;
 }
 
-const core::Property<Player::PlaybackRate>& TestPlayer::minimum_playback_rate() const
+void Player::setShuffle(bool shuffle)
 {
-    static core::Property<Volume> ret(1);
-    return ret;
 }
 
-const core::Property<Player::PlaybackRate>& TestPlayer::maximum_playback_rate() const
+bool Player::shuffle() const
 {
-    static core::Property<Volume> ret(8);
-    return ret;
+    Q_D(const Player);
+    return d->m_shuffle;
 }
 
-const core::Property<int64_t>& TestPlayer::position() const
+void Player::setVolume(Volume volume)
 {
-    return m_position;
 }
 
-const core::Property<int64_t>& TestPlayer::duration() const
+Player::Volume Player::volume() const
 {
-    static const core::Property<int64_t> dur(1e6);
-    return dur;
+    Q_D(const Player);
+    return d->m_volume;
 }
 
-const core::Property<Player::AudioStreamRole>& TestPlayer::audio_stream_role() const
+Track::MetaData Player::metaDataForCurrentTrack() const
 {
-    static const core::Property<Player::AudioStreamRole> role(Player::AudioStreamRole::multimedia);
-    return role;
+    Q_D(const Player);
+    return d->m_metaData;
 }
 
-const core::Property<Player::Orientation>& TestPlayer::orientation() const
+Player::PlaybackRate Player::minimumPlaybackRate() const
 {
-    static const core::Property<Player::Orientation> orientation(Player::Orientation::rotate0);
-    return orientation;
+    Q_D(const Player);
+    return d->m_minimumPlaybackRate;
 }
 
-const core::Property<Player::Lifetime>& TestPlayer::lifetime() const
+Player::PlaybackRate Player::maximumPlaybackRate() const
 {
-    static const core::Property<Player::Lifetime> lifetime(Player::Lifetime::normal);
-    return lifetime;
+    Q_D(const Player);
+    return d->m_maximumPlaybackRate;
 }
 
-core::Property<Player::LoopStatus>& TestPlayer::loop_status()
+quint64 Player::position() const
 {
-    static core::Property<Player::LoopStatus> ret(Player::LoopStatus::none);
-    return ret;
+    Q_D(const Player);
+    return d->m_position;
 }
 
-core::Property<Player::PlaybackRate>& TestPlayer::playback_rate()
+quint64 Player::duration() const
 {
-    static core::Property<Player::PlaybackRate> ret(1);
-    return ret;
+    Q_D(const Player);
+    return d->m_duration;
 }
 
-core::Property<bool>& TestPlayer::shuffle()
+Player::Orientation Player::orientation() const
 {
-    static core::Property<bool> ret(true);
-    return ret;
+    Q_D(const Player);
+    return d->m_orientation;
 }
 
-core::Property<Player::Volume>& TestPlayer::volume()
+void Player::setLoopStatus(LoopStatus loopStatus)
 {
-    static core::Property<Volume> ret(1);
-    return ret;
 }
 
-core::Property<Player::AudioStreamRole>& TestPlayer::audio_stream_role()
+Player::LoopStatus Player::loopStatus() const
 {
-    static core::Property<Player::AudioStreamRole> role(Player::AudioStreamRole::multimedia);
-    return role;
+    Q_D(const Player);
+    return Player::LoopNone;
 }
 
-core::Property<Player::Lifetime>& TestPlayer::lifetime()
+void Player::setAudioStreamRole(AudioStreamRole role)
 {
-    static core::Property<Player::Lifetime> lifetime(Player::Lifetime::normal);
-    return lifetime;
 }
 
-const core::Signal<int64_t>& TestPlayer::seeked_to() const
+Player::AudioStreamRole Player::audioStreamRole() const
 {
-    static core::Signal<int64_t> ret;
-    return ret;
+    Q_D(const Player);
+    return d->m_audioStreamRole;
 }
 
-const core::Signal<void>& TestPlayer::about_to_finish() const
-{
-    static core::Signal<void> ret;
-    return ret;
-}
-
-const core::Signal<void>& TestPlayer::end_of_stream() const
-{
-    static core::Signal<void> ret;
-    return ret;
-}
-
-core::Signal<Player::PlaybackStatus>& TestPlayer::playback_status_changed()
-{
-    static core::Signal<Player::PlaybackStatus> ret;
-    return ret;
-}
-
-const core::Signal<core::ubuntu::media::video::Dimensions>& TestPlayer::video_dimension_changed() const
-{
-    static core::Signal<core::ubuntu::media::video::Dimensions> ret;
-    return ret;
-}
-
-const core::Signal<Player::Error>& TestPlayer::error() const
-{
-    static core::Signal<Player::Error> ret;
-    return ret;
-}
-
-const core::Signal<int>& TestPlayer::buffering_changed() const
-{
-    static const core::Signal<int> dur;
-    return dur;
-}
-
-const std::shared_ptr<Service> Service::Client::instance()
-{
-    return NULL;
-}
-
-const Track::Id& TrackList::after_empty_track()
-{
-    static const Track::Id track_id;
-    return track_id;
-}
-}
-}
-}
+#include "player.moc"

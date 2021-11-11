@@ -1,110 +1,215 @@
 /*
- * Copyright (C) 2013-2014 Canonical, Ltd.
+ * Copyright © 2021 UBports Foundation.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation; version 3.
+ * Contact: Alberto Mardegan <mardy@users.sourceforge.net>
+ *
+ * This program is free software: you can redistribute it and/or modify it
+ * under the terms of the GNU Lesser General Public License version 3,
+ * as published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * GNU Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef PLAYER_H_
-#define PLAYER_H_
+#ifndef LOMIRI_MEDIAHUB_PLAYER_H
+#define LOMIRI_MEDIAHUB_PLAYER_H
 
-#include <core/media/service.h>
-#include <core/media/player.h>
-#include <core/media/track_list.h>
+#include "track.h"
 
-#include <core/media/video/dimensions.h>
-#include <core/media/video/sink.h>
+#include <QObject>
+#include <QScopedPointer>
+#include <QString>
 
-#include <cstdint>
-#include <memory>
+class QUrl;
 
-#include <QtTest/QtTest>
+namespace lomiri {
+namespace MediaHub {
 
-namespace core {
-namespace ubuntu {
-namespace media {
+class Error;
+class Service;
+class TrackList;
+class VideoSink;
 
-class TestPlayer : public Player
+class PlayerPrivate;
+class MH_EXPORT Player: public QObject
 {
+    Q_OBJECT
+    Q_DISABLE_COPY(Player)
+    Q_PROPERTY(bool canPlay READ canPlay NOTIFY controlsChanged)
+    Q_PROPERTY(bool canPause READ canPause NOTIFY controlsChanged)
+    Q_PROPERTY(bool canSeek READ canSeek NOTIFY controlsChanged)
+    Q_PROPERTY(bool canGoPrevious READ canGoPrevious NOTIFY controlsChanged)
+    Q_PROPERTY(bool canGoNext READ canGoNext NOTIFY controlsChanged)
+
+    Q_PROPERTY(bool isVideoSource READ isVideoSource NOTIFY sourceTypeChanged)
+    Q_PROPERTY(bool isAudioSource READ isAudioSource NOTIFY sourceTypeChanged)
+
+    Q_PROPERTY(PlaybackStatus playbackStatus READ playbackStatus
+               NOTIFY playbackStatusChanged)
+    Q_PROPERTY(bool shuffle READ shuffle WRITE setShuffle
+               NOTIFY shuffleChanged)
+    Q_PROPERTY(Volume volume READ volume WRITE setVolume NOTIFY volumeChanged)
+    Q_PROPERTY(Track::MetaData metaDataForCurrentTrack
+               READ metaDataForCurrentTrack
+               NOTIFY metaDataForCurrentTrackChanged)
+
+    Q_PROPERTY(PlaybackRate playbackRate
+               READ playbackRate WRITE setPlaybackRate
+               NOTIFY playbackRateChanged)
+    Q_PROPERTY(PlaybackRate minimumPlaybackRate READ minimumPlaybackRate
+               NOTIFY minimumPlaybackRateChanged)
+    Q_PROPERTY(PlaybackRate maximumPlaybackRate READ maximumPlaybackRate
+               NOTIFY maximumPlaybackRateChanged)
+
+    Q_PROPERTY(quint64 position READ position NOTIFY positionChanged)
+    Q_PROPERTY(quint64 duration READ duration NOTIFY durationChanged)
+    Q_PROPERTY(Orientation orientation READ orientation
+               NOTIFY orientationChanged)
+
+    Q_PROPERTY(LoopStatus loopStatus READ loopStatus WRITE setLoopStatus
+               NOTIFY loopStatusChanged)
+    Q_PROPERTY(AudioStreamRole audioStreamRole
+               READ audioStreamRole WRITE setAudioStreamRole
+               NOTIFY audioStreamRoleChanged)
+
 public:
-    TestPlayer();
-    TestPlayer(const TestPlayer&) = delete;
-    virtual ~TestPlayer();
+    typedef double PlaybackRate;
+    typedef double Volume;
+    typedef QMap<QString, QString> Headers;
 
-    Player& operator=(const Player&) = delete;
-    bool operator==(const Player&) const = delete;
+    enum PlaybackStatus {
+        Null,
+        Ready,
+        Playing,
+        Paused,
+        Stopped,
+    };
+    Q_ENUM(PlaybackStatus)
 
-    virtual std::string uuid() const;
-    virtual void reconnect();
-    virtual void abandon();
+    enum LoopStatus {
+        LoopNone,
+        LoopTrack,
+        LoopPlaylist,
+    };
+    Q_ENUM(LoopStatus)
 
-    virtual std::shared_ptr<TrackList> track_list();
-    virtual PlayerKey key() const;
+    /**
+     * Audio stream role types used to categorize audio playback.
+     * multimedia is the default role type and will be automatically
+     * paused by media-hub when other types need to play.
+     */
+    enum AudioStreamRole {
+        AlarmRole,
+        AlertRole,
+        MultimediaRole,
+        PhoneRole,
+    };
+    Q_ENUM(AudioStreamRole)
 
-    virtual video::Sink::Ptr create_gl_texture_video_sink(std::uint32_t texture_id);
+    enum Orientation {
+        Rotate0,
+        Rotate90,
+        Rotate180,
+        Rotate270,
+    };
+    Q_ENUM(Orientation)
 
-    virtual bool open_uri(const Track::UriType& uri);
-    virtual bool open_uri(const Track::UriType& uri, const HeadersType&);
-    virtual void next();
-    virtual void previous();
-    virtual void play();
-    virtual void pause();
-    virtual void stop();
-    virtual void seek_to(const std::chrono::microseconds& offset);
+    /* Do we need a link to the Service? We could call CreateSession
+     * internally.
+     */
+    Player(QObject *parent = nullptr);
+    virtual ~Player();
 
-    virtual const core::Property<bool>& can_play() const;
-    virtual const core::Property<bool>& can_pause() const;
-    virtual const core::Property<bool>& can_seek() const;
-    virtual const core::Property<bool>& can_go_previous() const;
-    virtual const core::Property<bool>& can_go_next() const;
-    virtual const core::Property<bool>& is_video_source() const;
-    virtual const core::Property<bool>& is_audio_source() const;
-    virtual const core::Property<PlaybackStatus>& playback_status() const;
-    virtual const core::Property<AVBackend::Backend>& backend() const;
-    virtual const core::Property<LoopStatus>& loop_status() const;
-    virtual const core::Property<PlaybackRate>& playback_rate() const;
-    virtual const core::Property<bool>& shuffle() const;
-    virtual const core::Property<Track::MetaData>& meta_data_for_current_track() const;
-    virtual const core::Property<Volume>& volume() const;
-    virtual const core::Property<PlaybackRate>& minimum_playback_rate() const;
-    virtual const core::Property<PlaybackRate>& maximum_playback_rate() const;
-    virtual const core::Property<int64_t>& position() const;
-    virtual const core::Property<int64_t>& duration() const;
-    virtual const core::Property<AudioStreamRole>& audio_stream_role() const;
-    virtual const core::Property<Orientation>& orientation() const;
-    virtual const core::Property<Lifetime>& lifetime() const;
+    QString uuid() const;
 
-    virtual core::Property<LoopStatus>& loop_status();
-    virtual core::Property<PlaybackRate>& playback_rate();
-    virtual core::Property<bool>& shuffle();
-    virtual core::Property<Volume>& volume();
-    virtual core::Property<AudioStreamRole>& audio_stream_role();
-    virtual core::Property<Lifetime>& lifetime();
+    /*
+     * Unused methods:
+     * - reconnect
+     * - abandon
+     */
 
-    virtual const core::Signal<int64_t>& seeked_to() const;
-    virtual const core::Signal<void>& about_to_finish() const;
-    virtual const core::Signal<void>& end_of_stream() const;
-    virtual core::Signal<PlaybackStatus>& playback_status_changed();
-    virtual const core::Signal<video::Dimensions>& video_dimension_changed() const;
+    void setTrackList(TrackList *trackList);
+    TrackList *trackList() const;
+
+    // The returned object is owned by the Player
+    VideoSink &createGLTextureVideoSink(uint32_t textureId);
+
+    void openUri(const QUrl &uri, const Headers &headers = {});
+    void goToNext();
+    void goToPrevious();
+    void play();
+    void pause();
+    void stop();
+    void seekTo(uint64_t microseconds);
+
+    /*
+     * Property accessors
+     */
+    bool canPlay() const;
+    bool canPause() const;
+    bool canSeek() const;
+    bool canGoPrevious() const;
+    bool canGoNext() const;
+
+    bool isVideoSource() const;
+    bool isAudioSource() const;
+
+    PlaybackStatus playbackStatus() const;
+    void setPlaybackRate(PlaybackRate rate);
+    PlaybackRate playbackRate() const;
+    void setShuffle(bool shuffle);
+    bool shuffle() const;
+    void setVolume(Volume volume);
+    Volume volume() const;
+    Track::MetaData metaDataForCurrentTrack() const;
+    PlaybackRate minimumPlaybackRate() const;
+    PlaybackRate maximumPlaybackRate() const;
+    quint64 position() const;
+    quint64 duration() const;
+    Orientation orientation() const;
+    void setLoopStatus(LoopStatus loopStatus);
+    LoopStatus loopStatus() const;
+    void setAudioStreamRole(AudioStreamRole role);
+    AudioStreamRole audioStreamRole() const;
+
+Q_SIGNALS:
+    void controlsChanged();
+    void sourceTypeChanged();
+    void playbackStatusChanged();
+    void backendChanged();
+    void metaDataForCurrentTrackChanged();
+    void loopStatusChanged();
+    void playbackRateChanged();
+    void shuffleChanged();
+    void volumeChanged();
+    void minimumPlaybackRateChanged();
+    void maximumPlaybackRateChanged();
+    void positionChanged(quint64 microseconds);
+    void durationChanged(quint64 microseconds);
+    void audioStreamRoleChanged();
+    void orientationChanged();
+
+    void seekedTo(quint64 microseconds);
+    void aboutToFinish();
+    void endOfStream();
+    void videoDimensionChanged(const QSize &size);
     /** Signals all errors and warnings (typically from GStreamer and below) */
-    virtual const core::Signal<Error>& error() const;
-    virtual const core::Signal<int>& buffering_changed() const;
+    void errorOccurred(const Error &error);
+    void bufferingChanged(int percent);
+    void serviceDisconnected();
+    void serviceReconnected();
 
 private:
-    core::Property<int64_t> m_position;
+    Q_DECLARE_PRIVATE(Player)
+    QScopedPointer<PlayerPrivate> d_ptr;
 };
 
-}
-}
-}
+} // namespace MediaHub
+} // namespace lomiri
 
-#endif
+#endif // LOMIRI_MEDIAHUB_PLAYER_H
