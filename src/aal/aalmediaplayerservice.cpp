@@ -247,7 +247,8 @@ void AalMediaPlayerService::setMediaPlaylist(const QMediaPlaylist &playlist)
     m_mediaPlaylist = &playlist;
 }
 
-void AalMediaPlayerService::setMedia(const QUrl &url)
+void AalMediaPlayerService::setMedia(const QUrl &url,
+                                     const lomiri::MediaHub::Player::Headers &headers)
 {
     if (m_hubPlayerSession == nullptr)
     {
@@ -271,7 +272,7 @@ void AalMediaPlayerService::setMedia(const QUrl &url)
     if (m_mediaPlaylistProvider == nullptr || m_mediaPlaylistProvider->mediaCount() == 0)
     {
         // errors are delivered via Player::errorOccurred()
-        m_hubPlayerSession->openUri(url);
+        m_hubPlayerSession->openUri(url, headers);
     }
 
     m_videoOutput->setupSurface();
